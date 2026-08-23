@@ -18,9 +18,21 @@ export async function generateMetadata(): Promise<Metadata> {
   const headerStore = await headers();
   const title = titleFromHost(hostFromHeaders(headerStore));
 
+  const description = `Play chess on ${title} with drag-and-drop moves, legal-move checks, and a 1-day saved game.`;
+
   return {
     title,
-    description: `Play chess on ${title} with drag-and-drop moves, legal-move checks, and a 1-day saved game.`,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+    },
   };
 }
 
