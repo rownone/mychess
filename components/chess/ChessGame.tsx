@@ -113,9 +113,17 @@ export function ChessGame({ initialMoves, title }: ChessGameProps) {
             White moves first. Click or drag a piece — legal squares light up.
           </p>
         </div>
-        <p className="rounded-full bg-amber-600/15 px-3 py-1 text-xs font-medium text-amber-200">
-          {statusText(chess)}
-        </p>
+        <div className="flex items-center gap-2">
+          <a
+            href="/"
+            className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-amber-100/80 transition hover:bg-white/15"
+          >
+            Play online
+          </a>
+          <p className="rounded-full bg-amber-600/15 px-3 py-1 text-xs font-medium text-amber-200">
+            {statusText(chess)}
+          </p>
+        </div>
       </header>
 
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 p-4 lg:flex-row lg:items-start lg:p-8">

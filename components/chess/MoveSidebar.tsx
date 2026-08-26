@@ -5,10 +5,20 @@ import { useEffect, useRef } from "react";
 type MoveSidebarProps = {
   moves: string[];
   status: string;
-  onNewGame: () => void;
+  onNewGame?: () => void;
+  actionLabel?: string;
+  onResign?: () => void;
+  resignDisabled?: boolean;
 };
 
-export function MoveSidebar({ moves, status, onNewGame }: MoveSidebarProps) {
+export function MoveSidebar({
+  moves,
+  status,
+  onNewGame,
+  actionLabel = "New Game",
+  onResign,
+  resignDisabled = false,
+}: MoveSidebarProps) {
   const rows = pairMoves(moves);
   const listRef = useRef<HTMLOListElement>(null);
 
@@ -50,15 +60,29 @@ export function MoveSidebar({ moves, status, onNewGame }: MoveSidebarProps) {
         )}
       </ol>
 
-      <div className="border-t border-amber-900/40 p-3">
-        <button
-          type="button"
-          onClick={onNewGame}
-          className="w-full rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-semibold text-stone-950 transition hover:bg-amber-500"
-        >
-          New Game
-        </button>
-      </div>
+      {(onResign || onNewGame) ? (
+        <div className="flex flex-col gap-2 border-t border-amber-900/40 p-3">
+          {onResign ? (
+            <button
+              type="button"
+              onClick={onResign}
+              disabled={resignDisabled}
+              className="w-full rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-red-100 transition hover:bg-red-500/20 disabled:opacity-50"
+            >
+              Resign
+            </button>
+          ) : null}
+          {onNewGame ? (
+            <button
+              type="button"
+              onClick={onNewGame}
+              className="w-full rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-semibold text-stone-950 transition hover:bg-amber-500"
+            >
+              {actionLabel}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </aside>
   );
 }

@@ -1,0 +1,45 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum GameStatus {
+  WAITING
+  ACTIVE
+  FINISHED
+}
+
+enum PieceColor {
+  w
+  b
+}
+
+model Game {
+  id         String     @id @default(cuid())
+  hostColor  PieceColor
+  hostToken  String
+  guestToken String?
+  status     GameStatus @default(WAITING)
+  resignedBy PieceColor?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  moves      GameMove[]
+
+  @@index([status, createdAt])
+}
+
+model GameMove {
+  id        String   @id @default(cuid())
+  gameId    String
+  game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  san       String
+  ply       Int
+  createdAt DateTime @default(now())
+
+  @@unique([gameId, ply])
+  @@index([gameId])
+}

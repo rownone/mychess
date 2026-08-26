@@ -5,7 +5,9 @@ import type { Color, PieceSymbol, Square } from "chess.js";
 import { PieceIcon } from "./PieceIcon";
 
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
-const RANKS = [8, 7, 6, 5, 4, 3, 2, 1] as const;
+const RANKS_WHITE = [8, 7, 6, 5, 4, 3, 2, 1] as const;
+const RANKS_BLACK = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+const FILES_BLACK = ["h", "g", "f", "e", "d", "c", "b", "a"] as const;
 
 export type BoardSquare = {
   square: Square;
@@ -24,6 +26,7 @@ type ChessBoardProps = {
   lastMove: { from: Square; to: Square } | null;
   checkedKing: Square | null;
   disabled?: boolean;
+  orientation?: Color;
   getLegalTargets: (from: Square) => LegalTarget[];
   onAttemptMove: (from: Square, to: Square) => boolean;
   onWrongTurn: () => void;
@@ -35,6 +38,7 @@ export function ChessBoard({
   lastMove,
   checkedKing,
   disabled = false,
+  orientation = "w",
   getLegalTargets,
   onAttemptMove,
   onWrongTurn,
@@ -43,6 +47,9 @@ export function ChessBoard({
   const [dragFrom, setDragFrom] = useState<Square | null>(null);
   const [hoverSquare, setHoverSquare] = useState<Square | null>(null);
   const skipClickRef = useRef(false);
+
+  const viewRanks = orientation === "w" ? RANKS_WHITE : RANKS_BLACK;
+  const viewFiles = orientation === "w" ? FILES : FILES_BLACK;
 
   const legalTargets = activeFrom ? getLegalTargets(activeFrom) : [];
   const legalBySquare = new Map(legalTargets.map((target) => [target.to, target]));
@@ -115,10 +122,12 @@ export function ChessBoard({
   return (
     <div className="relative aspect-square w-full max-w-[min(100%,72vh)] select-none overflow-hidden rounded-xl shadow-[0_16px_50px_rgba(0,0,0,0.45)] ring-1 ring-black/20">
       <div className="grid h-full w-full grid-cols-8 grid-rows-8">
-        {RANKS.map((rank, rankIndex) =>
-          FILES.map((file, fileIndex) => {
+        {viewRanks.map((rank, rankIndex) =>
+          viewFiles.map((file, fileIndex) => {
             const square = `${file}${rank}` as Square;
-            const piece = position[rankIndex][fileIndex];
+            const boardRankIndex = 8 - rank;
+            const boardFileIndex = FILES.indexOf(file as typeof FILES[number]);
+            const piece = position[boardRankIndex][boardFileIndex];
             const isDark = (fileIndex + rank) % 2 === 1;
             const isLast = lastMove?.from === square || lastMove?.to === square;
             const isHover = hoverSquare === square && dragFrom !== null;
