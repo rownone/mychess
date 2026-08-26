@@ -1,10 +1,13 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Chess, type Square } from "chess.js";
 import { clearMovesCookie, saveMovesToCookie } from "@/lib/game-cookie";
+import { localCheckmateMessage } from "@/lib/chess-state";
+import { fireWinConfetti } from "@/lib/win-confetti";
 import { ChessBoard } from "./ChessBoard";
 import { MoveSidebar } from "./MoveSidebar";
+import { WinCelebrationModal } from "./WinCelebrationModal";
 
 type ChessGameProps = {
   initialMoves: string[];
@@ -21,6 +24,15 @@ export function ChessGame({ initialMoves, title }: ChessGameProps) {
   const [fen, setFen] = useState(() => chess.fen());
   const [moves, setMoves] = useState(initialMoves);
   const [notice, setNotice] = useState<string | null>(null);
+  const [winModalOpen, setWinModalOpen] = useState(false);
+  const [winMessage, setWinMessage] = useState("");
+  const celebratedWinRef = useRef(false);
+
+  useEffect(() => {
+    if (chess.isCheckmate()) {
+      celebratedWinRef.current = true;
+    }
+  }, [chess]);
 
   const lastMove = useMemo(() => {
     const history = chess.history({ verbose: true });
@@ -94,18 +106,34 @@ export function ChessGame({ initialMoves, title }: ChessGameProps) {
     setFen(chess.fen());
     setMoves(nextMoves);
     saveMovesToCookie(nextMoves);
+
+    if (chess.isCheckmate() && !celebratedWinRef.current) {
+      celebratedWinRef.current = true;
+      setWinMessage(localCheckmateMessage(chess));
+      setWinModalOpen(true);
+      fireWinConfetti();
+    }
+
     return true;
   }
 
   function handleNewGame() {
     chess.reset();
     setNotice(null);
+    celebratedWinRef.current = false;
+    setWinModalOpen(false);
+    setWinMessage("");
     syncBoard();
     clearMovesCookie();
   }
 
   return (
     <div className="flex flex-1 flex-col bg-[#161210] text-[#f6ead7]">
+      <WinCelebrationModal
+        open={winModalOpen}
+        message={winMessage}
+        onClose={() => setWinModalOpen(false)}
+      />
       <header className="flex items-center justify-between border-b border-amber-900/30 px-5 py-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">{title}</h1>

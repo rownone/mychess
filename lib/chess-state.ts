@@ -39,3 +39,39 @@ export function resignationStatusText(
 export function isGameOver(chess: Chess): boolean {
   return chess.isGameOver();
 }
+
+export function didPlayerWin(
+  chess: Chess,
+  playerColor: "w" | "b" | null,
+  resignedBy: "w" | "b" | null,
+): boolean {
+  if (!playerColor) return false;
+
+  if (resignedBy) {
+    return resignedBy !== playerColor;
+  }
+
+  if (chess.isCheckmate()) {
+    return chess.turn() !== playerColor;
+  }
+
+  return false;
+}
+
+export function winCelebrationMessage(
+  chess: Chess,
+  resignedBy: "w" | "b" | null,
+): string {
+  if (resignedBy) {
+    return "Your opponent resigned. Great game!";
+  }
+  if (chess.isCheckmate()) {
+    return "Checkmate! You played brilliantly.";
+  }
+  return "You won the game!";
+}
+
+export function localCheckmateMessage(chess: Chess): string {
+  const winner = chess.turn() === "w" ? "Black" : "White";
+  return `Checkmate! ${winner} wins.`;
+}

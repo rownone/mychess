@@ -5,9 +5,12 @@ import { useRouter } from "next/navigation";
 import { Chess, type Square } from "chess.js";
 import {
   chessFromMoves,
+  didPlayerWin,
   gameStatusText,
   resignationStatusText,
+  winCelebrationMessage,
 } from "@/lib/chess-state";
+import { fireWinConfetti } from "@/lib/win-confetti";
 import {
   loadPlayerSession,
   type PlayerColor,
@@ -16,6 +19,7 @@ import {
 import { useVisibilityPolling } from "@/lib/use-visibility-polling";
 import { ChessBoard } from "./ChessBoard";
 import { MoveSidebar } from "./MoveSidebar";
+import { WinCelebrationModal } from "./WinCelebrationModal";
 
 const POLL_MY_TURN_MS = 2000;
 const POLL_OPPONENT_TURN_MS = 5000;
@@ -46,7 +50,10 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [resigning, setResigning] = useState(false);
+  const [winModalOpen, setWinModalOpen] = useState(false);
+  const [winMessage, setWinMessage] = useState("");
   const movesRef = useRef<string[]>([]);
+  const celebratedWinRef = useRef(false);
 
   const syncMoves = useCallback((nextMoves: string[]) => {
     chessRef.current = chessFromMoves(nextMoves);
@@ -141,6 +148,26 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
 
   const boardDisabled =
     !isActive || !playerColor || !isMyTurn || chess.isGameOver() || submitting || resigning;
+
+  const playerWon = Boolean(
+    playerColor && didPlayerWin(chess, playerColor, resignedBy),
+  );
+
+  useEffect(() => {
+    celebratedWinRef.current = false;
+    setWinModalOpen(false);
+    setWinMessage("");
+  }, [gameId]);
+
+  useEffect(() => {
+    if (!playerWon || celebratedWinRef.current) return;
+
+    celebratedWinRef.current = true;
+    const currentChess = chessRef.current ?? chessFromMoves(movesRef.current);
+    setWinMessage(winCelebrationMessage(currentChess, resignedBy));
+    setWinModalOpen(true);
+    fireWinConfetti();
+  }, [playerWon, resignedBy]);
 
   function getLegalTargets(from: Square) {
     if (!isMyTurn) return [];
@@ -309,6 +336,11 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
 
   return (
     <div className="flex flex-1 flex-col bg-[#161210] text-[#f6ead7]">
+      <WinCelebrationModal
+        open={winModalOpen}
+        message={winMessage}
+        onClose={() => setWinModalOpen(false)}
+      />
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-900/30 px-5 py-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
