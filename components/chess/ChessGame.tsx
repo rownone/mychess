@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Chess, type Square } from "chess.js";
+import { Chess, type Color, type Square } from "chess.js";
 import { clearMovesCookie, saveMovesToCookie } from "@/lib/game-cookie";
 import { localCheckmateMessage } from "@/lib/chess-state";
 import { fireWinConfetti } from "@/lib/win-confetti";
@@ -26,6 +26,7 @@ export function ChessGame({ initialMoves, title }: ChessGameProps) {
   const [notice, setNotice] = useState<string | null>(null);
   const [winModalOpen, setWinModalOpen] = useState(false);
   const [winMessage, setWinMessage] = useState("");
+  const [orientation, setOrientation] = useState<Color>("w");
   const celebratedWinRef = useRef(false);
 
   useEffect(() => {
@@ -164,12 +165,20 @@ export function ChessGame({ initialMoves, title }: ChessGameProps) {
               {notice}
             </p>
           ) : null}
+          <button
+            type="button"
+            onClick={() => setOrientation((current) => (current === "w" ? "b" : "w"))}
+            className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-amber-100/80 transition hover:bg-white/15"
+          >
+            {orientation === "w" ? "Flip board (black on bottom)" : "Flip board (white on bottom)"}
+          </button>
           <ChessBoard
             position={chess.board()}
             turn={chess.turn()}
             lastMove={lastMove}
             checkedKing={checkedKing}
             disabled={chess.isGameOver()}
+            orientation={orientation}
             getLegalTargets={getLegalTargets}
             onAttemptMove={handleAttemptMove}
             onWrongTurn={rejectWrongTurn}

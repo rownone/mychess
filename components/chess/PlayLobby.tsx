@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   savePlayerSession,
@@ -112,8 +113,17 @@ export function PlayLobby({ title }: { title: string }) {
   }
 
   return (
-    <div className="flex flex-1 flex-col bg-[#161210] text-[#f6ead7]">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-900/30 px-5 py-4">
+    <div className="relative flex min-h-full flex-1 flex-col text-[#f6ead7]">
+      <Image
+        src="/dgt-chessboard-bg.png"
+        alt=""
+        fill
+        priority
+        sizes="100vw"
+        className="object-cover object-center"
+      />
+      <div className="absolute inset-0 bg-[#161210]/70" aria-hidden />
+      <header className="relative z-10 flex flex-wrap items-center justify-between gap-3 border-b border-amber-900/30 bg-[#161210]/40 px-5 py-4 backdrop-blur-sm">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
           <p className="text-xs text-amber-100/55">
@@ -128,8 +138,8 @@ export function PlayLobby({ title }: { title: string }) {
         </a>
       </header>
 
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 p-4 lg:p-8">
-        <section className="rounded-xl border border-amber-900/30 bg-[#2a211c] p-5 shadow-[0_16px_40px_rgba(0,0,0,0.35)]">
+      <main className="relative z-10 mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 p-4 lg:p-8">
+        <section className="rounded-xl border border-amber-900/30 bg-[#2a211c]/90 p-5 shadow-[0_16px_40px_rgba(0,0,0,0.35)] backdrop-blur-md">
           <h2 className="text-sm font-semibold tracking-wide uppercase text-amber-200/80">
             New game
           </h2>
@@ -170,7 +180,7 @@ export function PlayLobby({ title }: { title: string }) {
           </button>
         </section>
 
-        <section className="rounded-xl border border-amber-900/30 bg-[#2a211c] shadow-[0_16px_40px_rgba(0,0,0,0.35)]">
+        <section className="rounded-xl border border-amber-900/30 bg-[#2a211c]/90 shadow-[0_16px_40px_rgba(0,0,0,0.35)] backdrop-blur-md">
           <header className="border-b border-amber-900/40 px-5 py-3">
             <h2 className="text-sm font-semibold tracking-wide uppercase text-amber-200/80">
               Waiting for opponent
