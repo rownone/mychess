@@ -13,6 +13,7 @@ import {
 import { fireWinConfetti } from "@/lib/win-confetti";
 import {
   loadPlayerSession,
+  savePlayerSession,
   type PlayerColor,
   type PlayerSession,
 } from "@/lib/player-session";
@@ -20,6 +21,8 @@ import { useVisibilityPolling } from "@/lib/use-visibility-polling";
 import { ChessBoard } from "./ChessBoard";
 import { MoveSidebar } from "./MoveSidebar";
 import { WinCelebrationModal } from "./WinCelebrationModal";
+
+const joinInflight = new Map<string, Promise<PlayerSession | null>>();
 
 const POLL_MY_TURN_MS = 2000;
 const POLL_OPPONENT_TURN_MS = 5000;
@@ -48,6 +51,7 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
   const [moves, setMoves] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [joining, setJoining] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [resigning, setResigning] = useState(false);
   const [winModalOpen, setWinModalOpen] = useState(false);
@@ -97,9 +101,97 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
     const stored = loadPlayerSession(gameId);
     setSession(stored);
 
-    refreshGame()
-      .catch(() => setNotice("This game could not be loaded."))
-      .finally(() => setLoading(false));
+    if (stored) {
+      refreshGame()
+        .catch(() => setNotice("This game could not be loaded."))
+        .finally(() => setLoading(false));
+      return;
+    }
+
+    let cancelled = false;
+
+    function startJoin(gId: string): Promise<PlayerSession | null> {
+      const promise = (async (): Promise<PlayerSession | null> => {
+        try {
+          const res = await fetch(`/api/games/${gId}/join`, { method: "POST" });
+          const body = (await res.json()) as {
+            id?: string;
+            token?: string;
+            color?: PlayerColor;
+            status?: string;
+            error?: string;
+          };
+
+          if (!res.ok || !body.id || !body.token || !body.color) {
+            return null;
+          }
+
+          const s: PlayerSession = { gameId: body.id, token: body.token, color: body.color };
+          savePlayerSession(s);
+          return s;
+        } catch {
+          return null;
+        } finally {
+          joinInflight.delete(gId);
+        }
+      })();
+
+      joinInflight.set(gId, promise);
+      return promise;
+    }
+
+    async function fetchAndMaybeJoin() {
+      let data: GameSnapshot;
+      try {
+        data = await refreshGame();
+      } catch {
+        setNotice("This game could not be loaded.");
+        setLoading(false);
+        return;
+      }
+
+      if (cancelled) return;
+
+      if (data.status !== "WAITING") {
+        setLoading(false);
+        return;
+      }
+
+      setJoining(true);
+
+      const existing = joinInflight.get(gameId);
+      const result = await (existing ?? startJoin(gameId));
+
+      if (cancelled) {
+        const fromStorage = loadPlayerSession(gameId);
+        if (fromStorage) setSession(fromStorage);
+        return;
+      }
+
+      if (result) {
+        setSession(result);
+        try {
+          await refreshGame();
+        } catch { /* poll will recover */ }
+      } else {
+        const fromStorage = loadPlayerSession(gameId);
+        if (fromStorage) {
+          setSession(fromStorage);
+          try {
+            await refreshGame();
+          } catch { /* poll will recover */ }
+        }
+      }
+
+      setJoining(false);
+      setLoading(false);
+    }
+
+    void fetchAndMaybeJoin();
+
+    return () => {
+      cancelled = true;
+    };
   }, [gameId, refreshGame]);
 
   const chess = chessRef.current ?? chessFromMoves(moves);
@@ -345,7 +437,7 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
         <div>
           <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
           <p className="text-xs text-amber-100/55">
-            Online game · share this URL so an opponent can join from the lobby.
+            Online game · share this URL so an opponent can join.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -366,20 +458,24 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
             <p className="text-sm text-amber-100/60">Loading game…</p>
           ) : null}
 
-          {isWaiting ? (
+          {isWaiting && session ? (
             <div className="w-full max-w-[min(100%,72vh)] rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-              Waiting for an opponent. Open the{" "}
-              <a href="/" className="font-medium text-amber-300 underline">
-                lobby
-              </a>{" "}
-              on another device and join game{" "}
-              <span className="font-mono text-amber-200">{gameId}</span>.
+              Waiting for an opponent. Share this page URL so they can join as{" "}
+              <span className="font-medium text-amber-200">
+                {snapshot?.hostColor === "w" ? "Black" : "White"}
+              </span>.
             </div>
           ) : null}
 
-          {!session && !loading ? (
+          {joining ? (
+            <div className="w-full max-w-[min(100%,72vh)] rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+              Joining game…
+            </div>
+          ) : null}
+
+          {!session && !loading && !joining ? (
             <div className="w-full max-w-[min(100%,72vh)] rounded-lg border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-              You do not have a seat in this game. Join it from the lobby if a slot is open.
+              You do not have a seat in this game. It may already have two players or is no longer open.
             </div>
           ) : null}
 
