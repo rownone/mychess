@@ -22,7 +22,7 @@ import { ChessBoard } from "./ChessBoard";
 import { MoveSidebar } from "./MoveSidebar";
 import { WinCelebrationModal } from "./WinCelebrationModal";
 
-const joiningGames = new Set<string>();
+const joinInflight = new Map<string, Promise<PlayerSession | null>>();
 
 const POLL_MY_TURN_MS = 2000;
 const POLL_OPPONENT_TURN_MS = 5000;
@@ -110,6 +110,36 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
 
     let cancelled = false;
 
+    function startJoin(gId: string): Promise<PlayerSession | null> {
+      const promise = (async (): Promise<PlayerSession | null> => {
+        try {
+          const res = await fetch(`/api/games/${gId}/join`, { method: "POST" });
+          const body = (await res.json()) as {
+            id?: string;
+            token?: string;
+            color?: PlayerColor;
+            status?: string;
+            error?: string;
+          };
+
+          if (!res.ok || !body.id || !body.token || !body.color) {
+            return null;
+          }
+
+          const s: PlayerSession = { gameId: body.id, token: body.token, color: body.color };
+          savePlayerSession(s);
+          return s;
+        } catch {
+          return null;
+        } finally {
+          joinInflight.delete(gId);
+        }
+      })();
+
+      joinInflight.set(gId, promise);
+      return promise;
+    }
+
     async function fetchAndMaybeJoin() {
       let data: GameSnapshot;
       try {
@@ -127,45 +157,34 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
         return;
       }
 
-      if (joiningGames.has(gameId)) return;
-      joiningGames.add(gameId);
       setJoining(true);
 
-      try {
-        const res = await fetch(`/api/games/${gameId}/join`, { method: "POST" });
-        const body = (await res.json()) as {
-          id?: string;
-          token?: string;
-          color?: PlayerColor;
-          status?: string;
-          error?: string;
-        };
+      const existing = joinInflight.get(gameId);
+      const result = await (existing ?? startJoin(gameId));
 
-        if (cancelled) return;
+      if (cancelled) {
+        const fromStorage = loadPlayerSession(gameId);
+        if (fromStorage) setSession(fromStorage);
+        return;
+      }
 
-        if (!res.ok || !body.id || !body.token || !body.color) {
-          setLoading(false);
-          setJoining(false);
-          return;
-        }
-
-        const newSession: PlayerSession = {
-          gameId: body.id,
-          token: body.token,
-          color: body.color,
-        };
-        savePlayerSession(newSession);
-        setSession(newSession);
-        await refreshGame();
-      } catch {
-        if (!cancelled) setNotice("Could not join the game.");
-      } finally {
-        joiningGames.delete(gameId);
-        if (!cancelled) {
-          setJoining(false);
-          setLoading(false);
+      if (result) {
+        setSession(result);
+        try {
+          await refreshGame();
+        } catch { /* poll will recover */ }
+      } else {
+        const fromStorage = loadPlayerSession(gameId);
+        if (fromStorage) {
+          setSession(fromStorage);
+          try {
+            await refreshGame();
+          } catch { /* poll will recover */ }
         }
       }
+
+      setJoining(false);
+      setLoading(false);
     }
 
     void fetchAndMaybeJoin();
