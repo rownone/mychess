@@ -346,26 +346,29 @@ export function ChessGame({ initialMoves, initialClock, title }: ChessGameProps)
             {orientation === "w" ? "Flip board (black on bottom)" : "Flip board (white on bottom)"}
           </button>
 
-          {hasClock ? (
-            <ChessClock
-              whiteTimeMs={whiteTimeMs}
-              blackTimeMs={blackTimeMs}
-              activeColor={!gameOver ? chess.turn() : null}
+          <div className="flex w-full max-w-[min(100%,calc(72vh+6rem))] items-stretch gap-2">
+            <div className="min-w-0 flex-1">
+              <ChessBoard
+              position={chess.board()}
+              turn={chess.turn()}
+              lastMove={lastMove}
+              checkedKing={checkedKing}
+              disabled={gameOver}
               orientation={orientation}
+              getLegalTargets={getLegalTargets}
+              onAttemptMove={handleAttemptMove}
+              onWrongTurn={rejectWrongTurn}
             />
-          ) : null}
-
-          <ChessBoard
-            position={chess.board()}
-            turn={chess.turn()}
-            lastMove={lastMove}
-            checkedKing={checkedKing}
-            disabled={gameOver}
-            orientation={orientation}
-            getLegalTargets={getLegalTargets}
-            onAttemptMove={handleAttemptMove}
-            onWrongTurn={rejectWrongTurn}
-          />
+            </div>
+            {hasClock ? (
+              <ChessClock
+                whiteTimeMs={whiteTimeMs}
+                blackTimeMs={blackTimeMs}
+                activeColor={!gameOver ? chess.turn() : null}
+                orientation={orientation}
+              />
+            ) : null}
+          </div>
         </section>
 
         <MoveSidebar

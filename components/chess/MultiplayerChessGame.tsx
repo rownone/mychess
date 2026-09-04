@@ -205,7 +205,10 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
     };
   }, [gameId, refreshGame]);
 
-  const chess = chessRef.current ?? chessFromMoves(moves);
+  if (!chessRef.current) {
+    chessRef.current = chessFromMoves(moves);
+  }
+  const chess = chessRef.current;
 
   const playerColor = session?.color;
   const isWaiting = snapshot?.status === "WAITING";
@@ -235,36 +238,46 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
 
   useEffect(() => {
     if (!hasClock || !isActive || !snapshot?.clockStartedAt) {
-      if (snapshot?.whiteTimeMs != null) setDisplayWhiteMs(snapshot.whiteTimeMs);
-      if (snapshot?.blackTimeMs != null) setDisplayBlackMs(snapshot.blackTimeMs);
+      if (snapshot?.whiteTimeMs != null) {
+        setDisplayWhiteMs((current) =>
+          current === snapshot.whiteTimeMs ? current : snapshot.whiteTimeMs,
+        );
+      }
+      if (snapshot?.blackTimeMs != null) {
+        setDisplayBlackMs((current) =>
+          current === snapshot.blackTimeMs ? current : snapshot.blackTimeMs,
+        );
+      }
       return;
     }
 
     const serverWhite = snapshot.whiteTimeMs ?? 0;
     const serverBlack = snapshot.blackTimeMs ?? 0;
     const clockStart = new Date(snapshot.clockStartedAt).getTime();
-    const activeSide = chess.turn();
 
     const tick = () => {
+      const activeSide = chessRef.current?.turn() ?? "w";
       const elapsed = Date.now() - clockStart;
       if (activeSide === "w") {
-        setDisplayWhiteMs(Math.max(0, serverWhite - elapsed));
-        setDisplayBlackMs(serverBlack);
+        const nextWhite = Math.max(0, serverWhite - elapsed);
+        setDisplayWhiteMs((current) => (current === nextWhite ? current : nextWhite));
+        setDisplayBlackMs((current) => (current === serverBlack ? current : serverBlack));
       } else {
-        setDisplayWhiteMs(serverWhite);
-        setDisplayBlackMs(Math.max(0, serverBlack - elapsed));
+        const nextBlack = Math.max(0, serverBlack - elapsed);
+        setDisplayWhiteMs((current) => (current === serverWhite ? current : serverWhite));
+        setDisplayBlackMs((current) => (current === nextBlack ? current : nextBlack));
       }
     };
 
     tick();
     const intervalId = window.setInterval(tick, CLOCK_TICK_MS);
     return () => window.clearInterval(intervalId);
-  }, [hasClock, isActive, snapshot?.clockStartedAt, snapshot?.whiteTimeMs, snapshot?.blackTimeMs, chess]);
+  }, [hasClock, isActive, snapshot?.clockStartedAt, snapshot?.whiteTimeMs, snapshot?.blackTimeMs, moves.length]);
 
   useEffect(() => {
     if (!hasClock || !isActive || !session || claimingTimeoutRef.current) return;
 
-    const activeSide = chess.turn();
+    const activeSide = chessRef.current?.turn() ?? "w";
     const activeTime = activeSide === "w" ? displayWhiteMs : displayBlackMs;
 
     if (activeTime != null && activeTime <= 0) {
@@ -284,18 +297,21 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
         }
       })();
     }
-  }, [hasClock, isActive, session, displayWhiteMs, displayBlackMs, chess, gameId, refreshGame]);
+  }, [hasClock, isActive, session, displayWhiteMs, displayBlackMs, moves.length, gameId, refreshGame]);
 
   const lastMove = useMemo(() => {
-    const history = chess.history({ verbose: true });
+    const current = chessRef.current;
+    if (!current) return null;
+    const history = current.history({ verbose: true });
     const latest = history.at(-1);
     return latest ? { from: latest.from, to: latest.to } : null;
-  }, [fen, chess]);
+  }, [fen]);
 
   const checkedKing = useMemo(() => {
-    if (!chess.isCheck()) return null;
-    const turn = chess.turn();
-    for (const row of chess.board()) {
+    const current = chessRef.current;
+    if (!current || !current.isCheck()) return null;
+    const turn = current.turn();
+    for (const row of current.board()) {
       for (const square of row) {
         if (square?.type === "k" && square.color === turn) {
           return square.square;
@@ -303,7 +319,7 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
       }
     }
     return null;
-  }, [fen, chess]);
+  }, [fen]);
 
   const boardDisabled =
     !isActive || !playerColor || !isMyTurn || chess.isGameOver() || submitting || resigning;
@@ -570,26 +586,29 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
             </p>
           ) : null}
 
-          {hasClock && displayWhiteMs != null && displayBlackMs != null ? (
-            <ChessClock
-              whiteTimeMs={displayWhiteMs}
-              blackTimeMs={displayBlackMs}
-              activeColor={isActive && !chess.isGameOver() ? chess.turn() : null}
+          <div className="flex w-full max-w-[min(100%,calc(72vh+6rem))] items-stretch gap-2">
+            <div className="min-w-0 flex-1">
+              <ChessBoard
+              position={chess.board()}
+              turn={chess.turn()}
+              lastMove={lastMove}
+              checkedKing={checkedKing}
               orientation={playerColor ?? "w"}
+              disabled={boardDisabled || loading}
+              getLegalTargets={getLegalTargets}
+              onAttemptMove={handleAttemptMove}
+              onWrongTurn={rejectWrongTurn}
             />
-          ) : null}
-
-          <ChessBoard
-            position={chess.board()}
-            turn={chess.turn()}
-            lastMove={lastMove}
-            checkedKing={checkedKing}
-            orientation={playerColor ?? "w"}
-            disabled={boardDisabled || loading}
-            getLegalTargets={getLegalTargets}
-            onAttemptMove={handleAttemptMove}
-            onWrongTurn={rejectWrongTurn}
-          />
+            </div>
+            {hasClock && displayWhiteMs != null && displayBlackMs != null ? (
+              <ChessClock
+                whiteTimeMs={displayWhiteMs}
+                blackTimeMs={displayBlackMs}
+                activeColor={isActive && !chess.isGameOver() ? chess.turn() : null}
+                orientation={playerColor ?? "w"}
+              />
+            ) : null}
+          </div>
 
           {isActive && playerColor && !isMyTurn && !chess.isGameOver() ? (
             <p className="text-sm text-amber-100/60">Opponent&apos;s turn…</p>
