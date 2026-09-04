@@ -53,7 +53,7 @@ export function ChessGame({ initialMoves, initialClock, title }: ChessGameProps)
       ? initialClock.timeControlMs
         ? (`${initialClock.timeControlMs / 60000}+0` as TimeControlOption)
         : "off"
-      : "10+0",
+      : "off",
   );
 
   const [timeControlMs, setTimeControlMs] = useState<number | null>(

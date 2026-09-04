@@ -21,7 +21,7 @@ export function PlayLobby({ title }: { title: string }) {
   const router = useRouter();
   const [games, setGames] = useState<WaitingGame[]>([]);
   const [hostColor, setHostColor] = useState<PlayerColor>("w");
-  const [timeControl, setTimeControl] = useState<TimeControlOption>("10+0");
+  const [timeControl, setTimeControl] = useState<TimeControlOption>("off");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [joiningId, setJoiningId] = useState<string | null>(null);
