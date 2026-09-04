@@ -8,6 +8,7 @@ import {
   didPlayerWin,
   gameStatusText,
   resignationStatusText,
+  timeoutStatusText,
   winCelebrationMessage,
 } from "@/lib/chess-state";
 import { fireWinConfetti } from "@/lib/win-confetti";
@@ -19,6 +20,7 @@ import {
 } from "@/lib/player-session";
 import { useVisibilityPolling } from "@/lib/use-visibility-polling";
 import { ChessBoard } from "./ChessBoard";
+import { ChessClock } from "./ChessClock";
 import { MoveSidebar } from "./MoveSidebar";
 import { WinCelebrationModal } from "./WinCelebrationModal";
 
@@ -27,12 +29,18 @@ const joinInflight = new Map<string, Promise<PlayerSession | null>>();
 const POLL_MY_TURN_MS = 2000;
 const POLL_OPPONENT_TURN_MS = 5000;
 const POLL_WAITING_MS = 5000;
+const CLOCK_TICK_MS = 100;
 
 type GameSnapshot = {
   id: string;
   hostColor: PlayerColor;
   status: "WAITING" | "ACTIVE" | "FINISHED";
   resignedBy: PlayerColor | null;
+  timedOutBy: PlayerColor | null;
+  timeControlMs: number | null;
+  whiteTimeMs: number | null;
+  blackTimeMs: number | null;
+  clockStartedAt: string | null;
   moves: string[];
 };
 
@@ -56,8 +64,11 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
   const [resigning, setResigning] = useState(false);
   const [winModalOpen, setWinModalOpen] = useState(false);
   const [winMessage, setWinMessage] = useState("");
+  const [displayWhiteMs, setDisplayWhiteMs] = useState<number | null>(null);
+  const [displayBlackMs, setDisplayBlackMs] = useState<number | null>(null);
   const movesRef = useRef<string[]>([]);
   const celebratedWinRef = useRef(false);
+  const claimingTimeoutRef = useRef(false);
 
   const syncMoves = useCallback((nextMoves: string[]) => {
     chessRef.current = chessFromMoves(nextMoves);
@@ -201,6 +212,7 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
   const isActive = snapshot?.status === "ACTIVE";
   const isFinished = snapshot?.status === "FINISHED";
   const resignedBy = snapshot?.resignedBy ?? null;
+  const timedOutBy = snapshot?.timedOutBy ?? null;
   const isMyTurn = Boolean(
     playerColor && isActive && chess.turn() === playerColor && !chess.isGameOver(),
   );
@@ -218,6 +230,61 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
     pollIntervalMs,
     !loading && !submitting && !resigning && !isFinished,
   );
+
+  const hasClock = snapshot?.timeControlMs != null;
+
+  useEffect(() => {
+    if (!hasClock || !isActive || !snapshot?.clockStartedAt) {
+      if (snapshot?.whiteTimeMs != null) setDisplayWhiteMs(snapshot.whiteTimeMs);
+      if (snapshot?.blackTimeMs != null) setDisplayBlackMs(snapshot.blackTimeMs);
+      return;
+    }
+
+    const serverWhite = snapshot.whiteTimeMs ?? 0;
+    const serverBlack = snapshot.blackTimeMs ?? 0;
+    const clockStart = new Date(snapshot.clockStartedAt).getTime();
+    const activeSide = chess.turn();
+
+    const tick = () => {
+      const elapsed = Date.now() - clockStart;
+      if (activeSide === "w") {
+        setDisplayWhiteMs(Math.max(0, serverWhite - elapsed));
+        setDisplayBlackMs(serverBlack);
+      } else {
+        setDisplayWhiteMs(serverWhite);
+        setDisplayBlackMs(Math.max(0, serverBlack - elapsed));
+      }
+    };
+
+    tick();
+    const intervalId = window.setInterval(tick, CLOCK_TICK_MS);
+    return () => window.clearInterval(intervalId);
+  }, [hasClock, isActive, snapshot?.clockStartedAt, snapshot?.whiteTimeMs, snapshot?.blackTimeMs, chess]);
+
+  useEffect(() => {
+    if (!hasClock || !isActive || !session || claimingTimeoutRef.current) return;
+
+    const activeSide = chess.turn();
+    const activeTime = activeSide === "w" ? displayWhiteMs : displayBlackMs;
+
+    if (activeTime != null && activeTime <= 0) {
+      claimingTimeoutRef.current = true;
+      void (async () => {
+        try {
+          const res = await fetch(`/api/games/${gameId}/timeout`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token: session.token }),
+          });
+          if (res.ok) {
+            await refreshGame();
+          }
+        } finally {
+          claimingTimeoutRef.current = false;
+        }
+      })();
+    }
+  }, [hasClock, isActive, session, displayWhiteMs, displayBlackMs, chess, gameId, refreshGame]);
 
   const lastMove = useMemo(() => {
     const history = chess.history({ verbose: true });
@@ -242,7 +309,7 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
     !isActive || !playerColor || !isMyTurn || chess.isGameOver() || submitting || resigning;
 
   const playerWon = Boolean(
-    playerColor && didPlayerWin(chess, playerColor, resignedBy),
+    playerColor && didPlayerWin(chess, playerColor, resignedBy, timedOutBy),
   );
 
   useEffect(() => {
@@ -256,10 +323,10 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
 
     celebratedWinRef.current = true;
     const currentChess = chessRef.current ?? chessFromMoves(movesRef.current);
-    setWinMessage(winCelebrationMessage(currentChess, resignedBy));
+    setWinMessage(winCelebrationMessage(currentChess, resignedBy, timedOutBy));
     setWinModalOpen(true);
     fireWinConfetti();
-  }, [playerWon, resignedBy]);
+  }, [playerWon, resignedBy, timedOutBy]);
 
   function getLegalTargets(from: Square) {
     if (!isMyTurn) return [];
@@ -341,13 +408,23 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
         error?: string;
         moves?: string[];
         status?: GameSnapshot["status"];
+        timedOutBy?: PlayerColor;
+        whiteTimeMs?: number;
+        blackTimeMs?: number;
+        clockStartedAt?: string | null;
       };
 
       if (!response.ok) {
         syncMoves(movesBefore);
         const message = payload.error ?? "Move was rejected.";
         setNotice(message);
-        if (response.status === 400) {
+        if (payload.timedOutBy) {
+          setSnapshot((current) =>
+            current
+              ? { ...current, status: "FINISHED", timedOutBy: payload.timedOutBy! }
+              : current,
+          );
+        } else if (response.status === 400) {
           window.alert("Illegal move");
         }
         return;
@@ -364,6 +441,9 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
                 ...current,
                 status: payload.status!,
                 moves: payload.moves ?? movesRef.current,
+                whiteTimeMs: payload.whiteTimeMs ?? current.whiteTimeMs,
+                blackTimeMs: payload.blackTimeMs ?? current.blackTimeMs,
+                clockStartedAt: payload.clockStartedAt ?? current.clockStartedAt,
               }
             : current,
         );
@@ -421,9 +501,11 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
     }
   }
 
-  const status = resignedBy
-    ? resignationStatusText(resignedBy, playerColor ?? null)
-    : gameStatusText(chess);
+  const status = timedOutBy
+    ? timeoutStatusText(timedOutBy, playerColor ?? null)
+    : resignedBy
+      ? resignationStatusText(resignedBy, playerColor ?? null)
+      : gameStatusText(chess);
   const youAre = playerColor === "w" ? "White" : playerColor === "b" ? "Black" : "Spectator";
 
   return (
@@ -486,6 +568,15 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
             >
               {notice}
             </p>
+          ) : null}
+
+          {hasClock && displayWhiteMs != null && displayBlackMs != null ? (
+            <ChessClock
+              whiteTimeMs={displayWhiteMs}
+              blackTimeMs={displayBlackMs}
+              activeColor={isActive && !chess.isGameOver() ? chess.turn() : null}
+              orientation={playerColor ?? "w"}
+            />
           ) : null}
 
           <ChessBoard

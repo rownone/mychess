@@ -8,17 +8,20 @@ import {
   type PlayerColor,
 } from "@/lib/player-session";
 import { useVisibilityPolling } from "@/lib/use-visibility-polling";
+import { TimeControlPicker, type TimeControlOption } from "./TimeControlPicker";
 
 type WaitingGame = {
   id: string;
   hostColor: PlayerColor;
   createdAt: string;
+  timeControlMs: number | null;
 };
 
 export function PlayLobby({ title }: { title: string }) {
   const router = useRouter();
   const [games, setGames] = useState<WaitingGame[]>([]);
   const [hostColor, setHostColor] = useState<PlayerColor>("w");
+  const [timeControl, setTimeControl] = useState<TimeControlOption>("10+0");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [joiningId, setJoiningId] = useState<string | null>(null);
@@ -49,7 +52,7 @@ export function PlayLobby({ title }: { title: string }) {
       const response = await fetch("/api/games", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hostColor }),
+        body: JSON.stringify({ hostColor, timeControl }),
       });
 
       const data = (await response.json()) as {
@@ -170,6 +173,11 @@ export function PlayLobby({ title }: { title: string }) {
             </label>
           </div>
 
+          <div className="mt-4">
+            <p className="mb-2 text-xs font-medium text-amber-100/60 uppercase">Time control</p>
+            <TimeControlPicker value={timeControl} onChange={setTimeControl} />
+          </div>
+
           <button
             type="button"
             onClick={() => void handleCreate()}
@@ -206,7 +214,10 @@ export function PlayLobby({ title }: { title: string }) {
                     <p className="font-mono text-sm text-amber-100">{game.id}</p>
                     <p className="text-xs text-amber-100/55">
                       Host plays {game.hostColor === "w" ? "White" : "Black"} ·{" "}
-                      {new Date(game.createdAt).toLocaleString()}
+                      {game.timeControlMs
+                        ? `${game.timeControlMs / 60000} min`
+                        : "No clock"}{" "}
+                      · {new Date(game.createdAt).toLocaleString()}
                     </p>
                   </div>
                   <button

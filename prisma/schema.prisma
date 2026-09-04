@@ -19,15 +19,20 @@ enum PieceColor {
 }
 
 model Game {
-  id         String     @id @default(cuid())
-  hostColor  PieceColor
-  hostToken  String
-  guestToken String?
-  status     GameStatus @default(WAITING)
-  resignedBy PieceColor?
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
-  moves      GameMove[]
+  id             String      @id @default(cuid())
+  hostColor      PieceColor
+  hostToken      String
+  guestToken     String?
+  status         GameStatus  @default(WAITING)
+  resignedBy     PieceColor?
+  timedOutBy     PieceColor?
+  timeControlMs  Int?
+  whiteTimeMs    Int?
+  blackTimeMs    Int?
+  clockStartedAt DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  moves          GameMove[]
 
   @@index([status, createdAt])
 }

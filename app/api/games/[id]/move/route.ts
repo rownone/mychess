@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { Square } from "chess.js";
+import type { PieceColor } from "@prisma/client";
 import { chessFromMoves, gameStatusText, isGameOver } from "@/lib/chess-state";
 import { prisma } from "@/lib/prisma";
 
@@ -10,6 +11,23 @@ type MoveBody = {
   from?: string;
   to?: string;
 };
+
+function finishByTimeout(
+  gameId: string,
+  timedOutColor: PieceColor,
+  clockUpdate: { whiteTimeMs: number; blackTimeMs: number },
+) {
+  return prisma.game.update({
+    where: { id: gameId },
+    data: {
+      status: "FINISHED",
+      timedOutBy: timedOutColor,
+      whiteTimeMs: clockUpdate.whiteTimeMs,
+      blackTimeMs: clockUpdate.blackTimeMs,
+      clockStartedAt: null,
+    },
+  });
+}
 
 export async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params;
@@ -66,6 +84,36 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Not your turn" }, { status: 403 });
   }
 
+  const now = new Date();
+  let whiteTimeMs = game.whiteTimeMs;
+  let blackTimeMs = game.blackTimeMs;
+
+  if (game.timeControlMs != null && game.clockStartedAt != null) {
+    const elapsed = now.getTime() - game.clockStartedAt.getTime();
+    const moverColor = chess.turn();
+
+    if (moverColor === "w") {
+      whiteTimeMs = Math.max(0, (whiteTimeMs ?? 0) - elapsed);
+    } else {
+      blackTimeMs = Math.max(0, (blackTimeMs ?? 0) - elapsed);
+    }
+
+    if ((moverColor === "w" && (whiteTimeMs ?? 0) <= 0) || (moverColor === "b" && (blackTimeMs ?? 0) <= 0)) {
+      await finishByTimeout(id, moverColor, {
+        whiteTimeMs: whiteTimeMs ?? 0,
+        blackTimeMs: blackTimeMs ?? 0,
+      });
+      const winner = moverColor === "w" ? "Black" : "White";
+      return NextResponse.json({
+        error: `Time expired — ${winner} wins`,
+        status: "FINISHED",
+        timedOutBy: moverColor,
+        whiteTimeMs,
+        blackTimeMs,
+      }, { status: 409 });
+    }
+  }
+
   const legal = chess
     .moves({ square: from as Square, verbose: true })
     .find((move) => move.to === to);
@@ -92,6 +140,15 @@ export async function POST(request: Request, context: RouteContext) {
   const ply = moves.length + 1;
   const finished = isGameOver(chess);
 
+  const clockData =
+    game.timeControlMs != null
+      ? {
+          whiteTimeMs,
+          blackTimeMs,
+          clockStartedAt: finished ? null : now,
+        }
+      : {};
+
   await prisma.$transaction(async (tx) => {
     await tx.gameMove.create({
       data: {
@@ -104,7 +161,12 @@ export async function POST(request: Request, context: RouteContext) {
     if (finished) {
       await tx.game.update({
         where: { id },
-        data: { status: "FINISHED" },
+        data: { status: "FINISHED", ...clockData, clockStartedAt: null },
+      });
+    } else {
+      await tx.game.update({
+        where: { id },
+        data: clockData,
       });
     }
   });
@@ -115,5 +177,8 @@ export async function POST(request: Request, context: RouteContext) {
     moves: chess.history(),
     status: finished ? "FINISHED" : "ACTIVE",
     statusText: gameStatusText(chess),
+    whiteTimeMs,
+    blackTimeMs,
+    clockStartedAt: finished ? null : now,
   });
 }
