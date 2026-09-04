@@ -29,10 +29,15 @@ export async function POST(_request: Request, context: RouteContext) {
     data: {
       guestToken,
       status: "ACTIVE",
+      ...(game.timeControlMs != null ? { clockStartedAt: new Date() } : {}),
     },
     select: {
       id: true,
       status: true,
+      timeControlMs: true,
+      whiteTimeMs: true,
+      blackTimeMs: true,
+      clockStartedAt: true,
     },
   });
 
@@ -41,5 +46,9 @@ export async function POST(_request: Request, context: RouteContext) {
     token: guestToken,
     color: guestColor,
     status: updated.status,
+    timeControlMs: updated.timeControlMs,
+    whiteTimeMs: updated.whiteTimeMs,
+    blackTimeMs: updated.blackTimeMs,
+    clockStartedAt: updated.clockStartedAt,
   });
 }

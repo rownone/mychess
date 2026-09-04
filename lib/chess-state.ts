@@ -44,11 +44,16 @@ export function didPlayerWin(
   chess: Chess,
   playerColor: "w" | "b" | null,
   resignedBy: "w" | "b" | null,
+  timedOutBy?: "w" | "b" | null,
 ): boolean {
   if (!playerColor) return false;
 
   if (resignedBy) {
     return resignedBy !== playerColor;
+  }
+
+  if (timedOutBy) {
+    return timedOutBy !== playerColor;
   }
 
   if (chess.isCheckmate()) {
@@ -61,14 +66,34 @@ export function didPlayerWin(
 export function winCelebrationMessage(
   chess: Chess,
   resignedBy: "w" | "b" | null,
+  timedOutBy?: "w" | "b" | null,
 ): string {
   if (resignedBy) {
     return "Your opponent resigned. Great game!";
+  }
+  if (timedOutBy) {
+    return "Your opponent ran out of time. Victory is yours!";
   }
   if (chess.isCheckmate()) {
     return "Checkmate! You played brilliantly.";
   }
   return "You won the game!";
+}
+
+export function timeoutStatusText(
+  timedOutBy: "w" | "b",
+  playerColor: "w" | "b" | null,
+): string {
+  const loser = timedOutBy === "w" ? "White" : "Black";
+  const winner = timedOutBy === "w" ? "Black" : "White";
+
+  if (playerColor === timedOutBy) {
+    return `Time expired — you lose`;
+  }
+  if (playerColor) {
+    return `Opponent's time expired — you win`;
+  }
+  return `${loser} ran out of time — ${winner} wins`;
 }
 
 export function localCheckmateMessage(chess: Chess): string {
