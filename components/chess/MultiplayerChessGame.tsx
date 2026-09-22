@@ -12,13 +12,14 @@ import {
   winCelebrationMessage,
 } from "@/lib/chess-state";
 import { fireWinConfetti } from "@/lib/win-confetti";
+import type { GameSnapshot } from "@/lib/game-types";
 import {
   loadPlayerSession,
   savePlayerSession,
   type PlayerColor,
   type PlayerSession,
 } from "@/lib/player-session";
-import { useVisibilityPolling } from "@/lib/use-visibility-polling";
+import { useGameStream } from "@/lib/use-game-stream";
 import { ChessBoard } from "./ChessBoard";
 import { ChessClock } from "./ChessClock";
 import { MoveSidebar } from "./MoveSidebar";
@@ -26,23 +27,7 @@ import { WinCelebrationModal } from "./WinCelebrationModal";
 
 const joinInflight = new Map<string, Promise<PlayerSession | null>>();
 
-const POLL_MY_TURN_MS = 2000;
-const POLL_OPPONENT_TURN_MS = 5000;
-const POLL_WAITING_MS = 5000;
 const CLOCK_TICK_MS = 100;
-
-type GameSnapshot = {
-  id: string;
-  hostColor: PlayerColor;
-  status: "WAITING" | "ACTIVE" | "FINISHED";
-  resignedBy: PlayerColor | null;
-  timedOutBy: PlayerColor | null;
-  timeControlMs: number | null;
-  whiteTimeMs: number | null;
-  blackTimeMs: number | null;
-  clockStartedAt: string | null;
-  moves: string[];
-};
 
 type MultiplayerChessGameProps = {
   gameId: string;
@@ -96,6 +81,14 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
     [syncMoves],
   );
 
+  const applySnapshot = useCallback(
+    (data: GameSnapshot) => {
+      setSnapshot(data);
+      applyServerMoves(data.moves);
+    },
+    [applyServerMoves],
+  );
+
   const refreshGame = useCallback(async () => {
     const response = await fetch(`/api/games/${gameId}`, { cache: "no-store" });
     if (!response.ok) {
@@ -103,10 +96,9 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
     }
 
     const data = (await response.json()) as GameSnapshot;
-    setSnapshot(data);
-    applyServerMoves(data.moves);
+    applySnapshot(data);
     return data;
-  }, [gameId, applyServerMoves]);
+  }, [gameId, applySnapshot]);
 
   useEffect(() => {
     const stored = loadPlayerSession(gameId);
@@ -220,19 +212,15 @@ export function MultiplayerChessGame({ gameId, title }: MultiplayerChessGameProp
     playerColor && isActive && chess.turn() === playerColor && !chess.isGameOver(),
   );
 
-  const pollIntervalMs = isWaiting
-    ? POLL_WAITING_MS
-    : isMyTurn
-      ? POLL_MY_TURN_MS
-      : POLL_OPPONENT_TURN_MS;
-
-  useVisibilityPolling(
-    () => {
-      void refreshGame();
+  useGameStream(gameId, {
+    onSnapshot: applySnapshot,
+    onEnd: (reason) => {
+      if (reason === "not_found") {
+        setNotice("This game could not be loaded.");
+      }
     },
-    pollIntervalMs,
-    !loading && !submitting && !resigning && !isFinished,
-  );
+    enabled: Boolean(snapshot) && !isFinished,
+  });
 
   const hasClock = snapshot?.timeControlMs != null;
 
